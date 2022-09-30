@@ -13,58 +13,114 @@ use serde_with::{
 
 use crate::Error;
 
-#[derive(Eq, PartialEq, Clone, SerializeDisplay, DeserializeFromStr)]
-pub struct LedgerId(Vec<u8>);
+#[derive(Copy, Clone, Eq, PartialEq)]
+enum Network {
+    Mainnet,
+    Testnet,
+    Previewnet,
+}
+
+impl Network {
+    const fn as_str(&self) -> &'static str {
+        match self {
+            Network::Mainnet => "mainnet",
+            Network::Testnet => "testnet",
+            Network::Previewnet => "previewnet",
+        }
+    }
+
+    const fn as_bytes(&self) -> &'static [u8] {
+        match self {
+            Network::Mainnet => &[0],
+            Network::Testnet => &[1],
+            Network::Previewnet => &[2],
+        }
+    }
+}
+
+#[derive(Clone)]
+enum LedgerIdData {
+    Known(Network),
+    Static(&'static [u8]),
+    Other(Box<[u8]>),
+}
+
+#[derive(Clone, SerializeDisplay, DeserializeFromStr)]
+pub struct LedgerId(LedgerIdData);
+
+impl PartialEq for LedgerId {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_bytes() == other.as_bytes()
+    }
+}
+
+impl Eq for LedgerId {}
+
+impl From<Network> for LedgerId {
+    fn from(it: Network) -> Self {
+        Self(LedgerIdData::Known(it))
+    }
+}
 
 impl LedgerId {
-    #[must_use]
-    pub fn mainnet() -> Self {
-        Self(vec![0])
-    }
-
-    #[must_use]
-    pub fn testnet() -> Self {
-        Self(vec![1])
-    }
-
-    #[must_use]
-    pub fn previewnet() -> Self {
-        Self(vec![2])
-    }
+    pub const MAINNET: LedgerId = LedgerId(LedgerIdData::Known(Network::Mainnet));
+    pub const TESTNET: LedgerId = LedgerId(LedgerIdData::Known(Network::Testnet));
+    pub const PREVIEWNET: LedgerId = LedgerId(LedgerIdData::Known(Network::Previewnet));
 
     #[must_use]
     pub fn from_bytes(bytes: Vec<u8>) -> Self {
-        Self(bytes)
+        match &*bytes {
+            [0] => Self::MAINNET,
+            [1] => Self::TESTNET,
+            [2] => Self::PREVIEWNET,
+            _ => Self(LedgerIdData::Other(bytes.into_boxed_slice())),
+        }
     }
 
     #[must_use]
-    pub fn is_mainnet(&self) -> bool {
-        self == &Self::mainnet()
+    pub const fn from_static(bytes: &'static [u8]) -> Self {
+        // this can be deduplicated with the previous nicely once `const_option_ext` is stable.
+        match &*bytes {
+            [0] => Self::MAINNET,
+            [1] => Self::TESTNET,
+            [2] => Self::PREVIEWNET,
+            _ => Self(LedgerIdData::Static(bytes)),
+        }
+    }
+
+    // can't match the constants because of `StructuralEq`
+    #[must_use]
+    pub const fn is_mainnet(&self) -> bool {
+        matches!(self, &LedgerId(LedgerIdData::Known(Network::Mainnet)))
     }
 
     #[must_use]
-    pub fn is_testnet(&self) -> bool {
-        self == &Self::testnet()
+    pub const fn is_testnet(&self) -> bool {
+        matches!(self, &LedgerId(LedgerIdData::Known(Network::Testnet)))
     }
 
     #[must_use]
-    pub fn is_previewnet(&self) -> bool {
-        self == &Self::previewnet()
+    pub const fn is_previewnet(&self) -> bool {
+        matches!(self, &LedgerId(LedgerIdData::Known(Network::Previewnet)))
     }
 
     #[must_use]
-    pub fn is_known_network(&self) -> bool {
-        self.is_mainnet() || self.is_previewnet() || self.is_testnet()
+    pub const fn is_known_network(&self) -> bool {
+        matches!(self, Self(LedgerIdData::Known(_)))
     }
 
     #[must_use]
-    pub fn as_bytes(&self) -> &[u8] {
-        self.0.as_slice()
+    pub const fn as_bytes(&self) -> &[u8] {
+        match &self.0 {
+            LedgerIdData::Known(network) => network.as_bytes(),
+            LedgerIdData::Static(bytes) => bytes,
+            LedgerIdData::Other(bytes) => &*bytes,
+        }
     }
 
     #[must_use]
     pub fn to_bytes(&self) -> Vec<u8> {
-        self.0.clone()
+        self.as_bytes().to_vec()
     }
 }
 
@@ -76,14 +132,9 @@ impl Debug for LedgerId {
 
 impl Display for LedgerId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        if self.is_mainnet() {
-            f.write_str("mainnet")
-        } else if self.is_testnet() {
-            f.write_str("testnet")
-        } else if self.is_previewnet() {
-            f.write_str("previewnet")
-        } else {
-            f.write_str(&hex::encode(self.as_bytes()))
+        match &self.0 {
+            LedgerIdData::Known(net) => f.write_str(net.as_str()),
+            _ => f.write_str(&hex::encode(self.as_bytes())),
         }
     }
 }
@@ -93,9 +144,9 @@ impl FromStr for LedgerId {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "mainnet" => Ok(Self::mainnet()),
-            "testnet" => Ok(Self::testnet()),
-            "previewnet" => Ok(Self::previewnet()),
+            "mainnet" => Ok(Self::MAINNET),
+            "testnet" => Ok(Self::TESTNET),
+            "previewnet" => Ok(Self::PREVIEWNET),
             _ => hex::decode(s).map(Self::from_bytes).map_err(Error::basic_parse),
         }
     }
@@ -107,35 +158,33 @@ mod tests {
 
     use crate::LedgerId;
 
+    const NETWORK1_BYTES: &[u8] = &[0x00, 0xff, 0x00, 0xff];
+    const NETWORK1: LedgerId = LedgerId::from_static(NETWORK1_BYTES);
+
     #[test]
-    fn it_can_to_string() {
-        assert_eq!(LedgerId::mainnet().to_string(), "mainnet");
-        assert_eq!(LedgerId::testnet().to_string(), "testnet");
-        assert_eq!(LedgerId::previewnet().to_string(), "previewnet");
-        assert_eq!(
-            LedgerId::from_bytes(vec![0x00, 0xFF, 0x00, 0xFF]).to_string().to_uppercase(),
-            "00FF00FF"
-        );
+    fn to_string() {
+        assert_eq!(LedgerId::MAINNET.to_string(), "mainnet");
+        assert_eq!(LedgerId::TESTNET.to_string(), "testnet");
+        assert_eq!(LedgerId::PREVIEWNET.to_string(), "previewnet");
+        assert_eq!(NETWORK1.to_string(), "00ff00ff");
     }
 
     #[test]
-    fn it_can_from_string() {
-        assert_eq!(LedgerId::from_str("mainnet").unwrap(), LedgerId::mainnet());
-        assert_eq!(LedgerId::from_str("testnet").unwrap(), LedgerId::testnet());
-        assert_eq!(LedgerId::from_str("previewnet").unwrap(), LedgerId::previewnet());
-        assert_eq!(
-            LedgerId::from_str("00ff00ff").unwrap(),
-            LedgerId::from_bytes(vec![0x00, 0xFF, 0x00, 0xFF])
-        );
-        assert_eq!(
-            LedgerId::from_str("00FF00FF").unwrap(),
-            LedgerId::from_bytes(vec![0x00, 0xFF, 0x00, 0xFF])
-        );
+    fn parse() {
+        assert_eq!(LedgerId::from_str("mainnet").unwrap(), LedgerId::MAINNET);
+        assert_eq!(LedgerId::from_str("testnet").unwrap(), LedgerId::TESTNET);
+        assert_eq!(LedgerId::from_str("previewnet").unwrap(), LedgerId::PREVIEWNET);
+        assert_eq!(LedgerId::from_str("00ff00ff").unwrap(), NETWORK1);
+        assert_eq!(LedgerId::from_str("00FF00FF").unwrap(), NETWORK1);
     }
 
     #[test]
-    fn it_can_to_bytes() {
-        let bytes = vec![0x00, 0xFF, 0x00, 0xFF];
-        assert_eq!(LedgerId::from_bytes(bytes.clone()).as_bytes(), &bytes);
+    fn as_bytes() {
+        assert_eq!(NETWORK1.as_bytes(), NETWORK1_BYTES);
+    }
+
+    #[test]
+    fn to_bytes() {
+        assert_eq!(&*NETWORK1.to_bytes(), NETWORK1_BYTES);
     }
 }
