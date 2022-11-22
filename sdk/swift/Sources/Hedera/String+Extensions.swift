@@ -39,3 +39,34 @@ extension String {
         hedera_string_free(hString)
     }
 }
+
+// usablility functions.
+extension String {
+    internal func splitOnce(on separator: Self.Element) -> (Self.SubSequence, Self.SubSequence)? {
+        guard let index = self.firstIndex(of: separator) else {
+            return nil
+        }
+
+        let first = self[..<index]
+
+        let postIndex = self.index(index, offsetBy: 1, limitedBy: self.endIndex) ?? self.endIndex
+
+        return (first, self[postIndex...])
+    }
+
+    internal func rsplitOnce(on separator: Self.Element) -> (Self.SubSequence, Self.SubSequence)? {
+        if let index = self.lastIndex(of: separator) {
+            let first = self[..<index]
+
+            let postIndex = self.index(index, offsetBy: 1, limitedBy: self.endIndex) ?? self.endIndex
+
+            return (first, self[postIndex...])
+        }
+
+        return nil
+    }
+
+    internal func stripPrefix(_ prefix: String) -> Self.SubSequence? {
+        self.starts(with: prefix) ? self[prefix.endIndex...] : nil
+    }
+}
