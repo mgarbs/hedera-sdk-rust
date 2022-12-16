@@ -22,10 +22,10 @@ import CHedera
 import Foundation
 
 /// A transaction or query that can be executed on the Hedera network.
-public protocol Request: Encodable {
+internal protocol Request: Encodable {
     associatedtype Response: Decodable
 
-    func execute(_ client: Client, _ timeout: TimeInterval?) async throws -> Response
+    func executeInternal(_ client: Client, _ timeout: TimeInterval?) async throws -> Response
 
     func decodeResponse(_ responseBytes: Data) throws -> Response
 }
@@ -65,7 +65,7 @@ extension Request {
     }
 
     /// Execute this request against the provided client of the Hedera network.
-    public func execute(_ client: Client, _ timeout: TimeInterval? = nil) async throws -> Response {
+    func executeInternal(_ client: Client, _ timeout: TimeInterval? = nil) async throws -> Response {
         // encode self as a JSON request to pass to Rust
         let requestBytes = try JSONEncoder().encode(self)
 

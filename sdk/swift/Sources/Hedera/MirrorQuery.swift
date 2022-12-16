@@ -37,4 +37,8 @@ public class MirrorQuery<Response: Decodable>: Request {
 
         try container.encode(requestName, forKey: .type)
     }
+
+    public func execute(_ client: Client, _ timeout: TimeInterval? = nil) async throws -> Response {
+        try await executeInternal(client, timeout)
+    }
 }

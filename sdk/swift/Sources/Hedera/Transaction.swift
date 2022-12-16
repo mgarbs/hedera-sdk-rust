@@ -54,7 +54,11 @@ public class Transaction: Request {
         return self
     }
 
-    public func execute(_ client: Client, _ timeout: TimeInterval? = nil) async throws -> TransactionResponse {
+    public func execute(_ client: Client, _ timeout: TimeInterval? = nil) async throws -> Response {
+        try await executeInternal(client, timeout)
+    }
+
+    public func executeInternal(_ client: Client, _ timeout: TimeInterval? = nil) async throws -> TransactionResponse {
         // encode self as a JSON request to pass to Rust
         let requestBytes = try JSONEncoder().encode(self)
 
