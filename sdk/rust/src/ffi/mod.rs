@@ -30,7 +30,6 @@ mod crypto;
 mod execute;
 mod key;
 mod mnemonic;
-mod network_version_info;
 mod nft_id;
 mod node_address_book;
 mod runtime;
@@ -46,6 +45,5 @@ mod transaction_receipt;
 mod util;
 
 use account_id::AccountId;
-use semantic_version::SemanticVersion;
 pub(crate) use signer::CSigner;
 use timestamp::Timestamp;
