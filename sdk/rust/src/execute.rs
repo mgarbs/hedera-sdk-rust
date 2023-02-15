@@ -138,13 +138,13 @@ where
     // TODO: cache requests to avoid signing a new request for every node in a delayed back-off
 
     // if we need to generate a transaction ID for this request (and one was not provided),
-    // generate one now
+    // generate one nowP
     let explicit_transaction_id = executable.transaction_id();
     let mut transaction_id = match executable.requires_transaction_id() {
         false => None,
         true => match explicit_transaction_id {
             Some(id) => Some(id),
-            None => client.generate_transaction_id().await,
+            None => client.generate_transaction_id(),
         },
     };
 
@@ -183,6 +183,7 @@ where
             rand::seq::index::sample(&mut thread_rng(), node_indexes.len(), node_sample_amount);
 
         for index in node_index_indexes.iter() {
+            let index = node_indexes[index];
             // logic:
             // if there are no explicit node indexes, all nodes we pick are healthy.
             // if we're including unhealthy nodes, then it doesn't matter if it's healthy.
@@ -193,8 +194,7 @@ where
                 continue;
             }
 
-            let node_index = node_indexes[index];
-            let (node_account_id, channel) = client.network().channel(node_index);
+            let (node_account_id, channel) = client.network().channel(index);
 
             let (request, context) = executable.make_request(&transaction_id, node_account_id)?;
 
@@ -204,7 +204,7 @@ where
                     match status.code() {
                         tonic::Code::Unavailable | tonic::Code::ResourceExhausted => {
                             // NOTE: this is an "unhealthy" node
-                            client.network().mark_node_unhealthy(node_index);
+                            client.network().mark_node_unhealthy(index);
 
                             // try the next node in our allowed list, immediately
                             last_error = Some(status.into());
@@ -248,7 +248,7 @@ where
                         // the transaction that was generated has since expired
                         // re-generate the transaction ID and try again, immediately
                         last_error = Some(executable.make_error_pre_check(status, transaction_id));
-                        transaction_id = client.generate_transaction_id().await;
+                        transaction_id = client.generate_transaction_id();
                         continue;
                     }
 
